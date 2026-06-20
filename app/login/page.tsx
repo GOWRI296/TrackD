@@ -27,7 +27,7 @@ export default function LoginPage() {
     await supabase.auth.signInWithOAuth({
       provider: "github",
       options: {
-        redirectTo: "http://localhost:3000",
+        redirectTo: window.location.origin,
       },
     });
   }
@@ -36,7 +36,7 @@ export default function LoginPage() {
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: "http://localhost:3000",
+        redirectTo: window.location.origin,
         scopes:
           "openid email profile https://www.googleapis.com/auth/calendar.readonly",
       },
