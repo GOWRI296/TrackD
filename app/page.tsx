@@ -1,5 +1,5 @@
 import UserProfileCard from "./components/UserProfileCard";
-import supabase from "../lib/supabase";
+import { createSupabaseServerClient } from "../lib/supabase-server";
 import ProductivityChart from "./components/ProductivityChart";
 import Sidebar from "./components/Sidebar";
 import GithubLiveStats from "./components/GithubLiveStats";
@@ -46,6 +46,8 @@ function getDeadlineRisk(score: number): string {
 }
 
 export default async function Home() {
+  const supabase = await createSupabaseServerClient();
+
   const { data } = await supabase
     .from("daily_metrics")
     .select("*")

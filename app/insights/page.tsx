@@ -1,8 +1,10 @@
-import supabase from "../../lib/supabase";
+import { createSupabaseServerClient } from "../../lib/supabase-server";
 import ForecastChart from "../components/ForecastChart";
 import Sidebar from "../components/Sidebar";
 
 export default async function InsightsPage() {
+  const supabase = await createSupabaseServerClient();
+
   const { data } = await supabase
     .from("daily_metrics")
     .select("*")
