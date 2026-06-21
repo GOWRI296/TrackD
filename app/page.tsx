@@ -48,14 +48,9 @@ function getDeadlineRisk(score: number): string {
 export default async function Home() {
   const supabase = await createSupabaseServerClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   const { data } = await supabase
     .from("daily_metrics")
     .select("*")
-    .eq("user_id", user?.id)
     .order("created_at", { ascending: false });
 
   const metric = data?.[0];

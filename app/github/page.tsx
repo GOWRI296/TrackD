@@ -6,14 +6,9 @@ import Sidebar from "../components/Sidebar";
 export default async function GithubPage() {
   const supabase = await createSupabaseServerClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   const { data } = await supabase
     .from("daily_metrics")
     .select("*")
-    .eq("user_id", user?.id)
     .order("created_at", { ascending: false });
 
   const latest = data?.[0];
