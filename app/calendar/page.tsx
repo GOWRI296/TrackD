@@ -1,18 +1,49 @@
 import { createSupabaseServerClient } from "../../lib/supabase-server";
-import ForecastChart from "../components/ForecastChart";
+import CalendarChart from "../components/CalendarChart";
+import CalendarLiveStats from "../components/CalendarLiveStats";
 import Sidebar from "../components/Sidebar";
 
-export default async function InsightsPage() {
+export default async function CalendarPage() {
   const supabase = await createSupabaseServerClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   const { data } = await supabase
     .from("daily_metrics")
     .select("*")
-    .order("created_at", { ascending: false })
-    .limit(5);
+    .eq("user_id", user?.id)
+    .order("created_at", { ascending: false });
 
   const latest = data?.[0];
-  const history = data?.slice(1) || [];
+
+  const totalMeetingHours = (data || []).reduce(
+    (sum, item) => sum + (item.meeting_hours ?? 0),
+    0
+  );
+  const avgMeetingHours = data?.length
+    ? Math.round(
+        ((data || []).reduce((sum, item) => sum + (item.meeting_hours ?? 0), 0) /
+          data.length) *
+          10
+      ) / 10
+    : 0;
+  const freeDays = (data || []).filter((item) => (item.meeting_hours ?? 0) === 0).length;
+
+  // Weekly load distribution — busiest day of week by avg meeting hours
+  const dayBuckets = [0, 0, 0, 0, 0, 0, 0];
+  const dayCounts = [0, 0, 0, 0, 0, 0, 0];
+  (data || []).forEach((item) => {
+    const d = new Date(item.created_at).getDay();
+    dayBuckets[d] += item.meeting_hours ?? 0;
+    dayCounts[d] += 1;
+  });
+  const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const dayAverages = dayBuckets.map((total, i) =>
+    dayCounts[i] ? total / dayCounts[i] : 0
+  );
+  const maxDayAvg = Math.max(...dayAverages, 1);
 
   return (
     <>
@@ -20,7 +51,7 @@ export default async function InsightsPage() {
 
       {/* Same background as dashboard */}
       <div className="dash-bg-wrap">
-        <span className="dash-bg-text">INSIGHTS</span>
+        <span className="dash-bg-text">CALENDAR</span>
       </div>
       <div className="dash-overlay" />
       <div style={{ position: "fixed", inset: 0, zIndex: 0, overflow: "hidden", pointerEvents: "none" }}>
@@ -41,65 +72,79 @@ export default async function InsightsPage() {
       >
         {/* Header */}
         <div style={{ marginBottom: "36px" }}>
-          <h1 className="dash-title">AI Insights</h1>
-          <p className="dash-sub">AI-powered productivity intelligence and recommendations.</p>
+          <h1 className="dash-title">Calendar Analytics</h1>
+          <p className="dash-sub">Meeting workload and scheduling intelligence.</p>
         </div>
 
-        {/* KPI Cards */}
+        {/* Top stat cards */}
         <div className="grid lg:grid-cols-4 md:grid-cols-2 grid-cols-1 gap-5" style={{ marginBottom: "28px" }}>
-          <div className="card">
-            <p className="metric-title">Burnout Risk</p>
-            <h2 className="metric-value">{latest?.burnout_risk ?? "Low"}</h2>
-          </div>
-
-          <div className="card">
-            <p className="metric-title">Predicted Productivity</p>
-            <h2 className="metric-value">{latest?.predicted_score ?? 0}</h2>
-          </div>
-
+          <CalendarLiveStats />
           <div className="card">
             <p className="metric-title">Meeting Hours</p>
             <h2 className="metric-value">{latest?.meeting_hours ?? 0}</h2>
           </div>
-
           <div className="card">
-            <p className="metric-title">Upcoming Events</p>
-            <h2 className="metric-value">{latest?.upcoming_events ?? 0}</h2>
+            <p className="metric-title">Burnout Risk</p>
+            <h2 className="metric-value">{latest?.burnout_risk ?? "Low"}</h2>
+          </div>
+          <div className="card">
+            <p className="metric-title">Deadline Risk</p>
+            <h2 className="metric-value">{latest?.deadline_risk ?? "Low"}</h2>
           </div>
         </div>
 
-        {/* Gemini Report */}
-        <div className="card" style={{ marginBottom: "28px" }}>
-          <h2 className="ins-section-title">Gemini AI Recommendation</h2>
+        {/* Main layout — chart + right panel */}
+        <div className="cal-layout">
 
-          <div className="ins-report-box">
-            <p className="ins-report-text">
-              {latest?.ai_report ?? "No AI recommendations available."}
-            </p>
+          {/* LEFT — Chart */}
+          <div className="cal-chart">
+            <CalendarChart data={[...(data || [])].reverse()} />
           </div>
-        </div>
 
-        {/* Forecast Chart */}
-        <div style={{ marginBottom: "28px" }}>
-          <ForecastChart
-            current={latest?.productivity_score ?? 0}
-            predicted={latest?.predicted_score ?? 0}
-          />
-        </div>
+          {/* RIGHT PANEL — Stats + Weekly Load */}
+          <div className="cal-right">
 
-        {/* AI Report History */}
-        <div className="card">
-          <h2 className="ins-section-title-sm">Previous AI Assessments</h2>
-
-          <div className="ins-history-list">
-            {history.map((item, index) => (
-              <div key={index} className="ins-history-item">
-                <p className="ins-history-date">
-                  {new Date(item.created_at).toLocaleDateString()}
-                </p>
-                <p className="ins-history-text">{item.ai_report}</p>
+            {/* Quick stats strip */}
+            <div className="cal-stats-strip">
+              <div className="cal-stat">
+                <span className="cal-stat-val">{totalMeetingHours}h</span>
+                <span className="cal-stat-lbl">Total Hours</span>
               </div>
-            ))}
+              <div className="cal-stat-divider" />
+              <div className="cal-stat">
+                <span className="cal-stat-val">{avgMeetingHours}h</span>
+                <span className="cal-stat-lbl">Avg / Day</span>
+              </div>
+              <div className="cal-stat-divider" />
+              <div className="cal-stat">
+                <span className="cal-stat-val">{freeDays}d</span>
+                <span className="cal-stat-lbl">Free Days</span>
+              </div>
+            </div>
+
+            {/* Weekly load distribution — visual only, generated from data */}
+            <div className="cal-load-card">
+              <p className="cal-load-title">Weekly Load Distribution</p>
+              <div className="cal-load-bars">
+                {dayAverages.map((avg, i) => {
+                  const heightPct = Math.max((avg / maxDayAvg) * 100, 4);
+                  const level =
+                    avg >= 6 ? 4 : avg >= 4 ? 3 : avg >= 2 ? 2 : avg > 0 ? 1 : 0;
+                  return (
+                    <div key={i} className="cal-load-col">
+                      <div className="cal-load-track">
+                        <div
+                          className={`cal-load-fill cal-load-${level}`}
+                          style={{ height: `${heightPct}%` }}
+                          title={`${dayLabels[i]}: avg ${avg.toFixed(1)}h`}
+                        />
+                      </div>
+                      <span className="cal-load-day">{dayLabels[i]}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       </main>
@@ -140,50 +185,95 @@ export default async function InsightsPage() {
         }
         .dash-sub { color: rgba(255,255,255,0.35); font-size: 15px; margin-top: 6px; }
 
-        /* Section titles inside cards */
-        .ins-section-title {
-          font-size: 22px; font-weight: 700; letter-spacing: -0.01em;
-          color: #f5f5f7; margin-bottom: 18px;
+        /* Layout */
+        .cal-layout {
+          display: grid;
+          grid-template-columns: 1fr 320px;
+          gap: 20px;
+          align-items: start;
         }
-        .ins-section-title-sm {
-          font-size: 18px; font-weight: 700; letter-spacing: -0.01em;
-          color: #f5f5f7; margin-bottom: 18px;
+        .cal-right {
+          display: flex; flex-direction: column; gap: 14px;
         }
+        .cal-chart { min-width: 0; }
 
-        /* Gemini report box */
-        .ins-report-box {
-          background: rgba(8, 12, 24, 0.55);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 14px;
-          padding: 22px;
+        /* Stats strip */
+        .cal-stats-strip {
+          background: rgba(15, 20, 40, 0.55);
+          backdrop-filter: blur(24px) saturate(160%);
+          -webkit-backdrop-filter: blur(24px) saturate(160%);
+          border-top: 1px solid rgba(255,255,255,0.12);
+          border-left: 1px solid rgba(255,255,255,0.08);
+          border-right: 1px solid rgba(255,255,255,0.04);
+          border-bottom: 1px solid rgba(255,255,255,0.03);
+          border-radius: 16px;
+          padding: 18px 20px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
         }
-        .ins-report-text {
-          font-size: 15px; line-height: 1.8;
-          color: rgba(255,255,255,0.65);
-          white-space: pre-line;
-        }
+        .cal-stat { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; }
+        .cal-stat-val { font-size: 26px; font-weight: 700; color: #fff; letter-spacing: -0.02em; }
+        .cal-stat-lbl { font-size: 10px; font-weight: 500; color: rgba(255,255,255,0.35); text-transform: uppercase; letter-spacing: 0.07em; }
+        .cal-stat-divider { width: 1px; height: 36px; background: rgba(255,255,255,0.08); }
 
-        /* History list */
-        .ins-history-list {
-          display: flex; flex-direction: column; gap: 12px;
+        /* Weekly load distribution */
+        .cal-load-card {
+          background: rgba(15, 20, 40, 0.55);
+          backdrop-filter: blur(24px) saturate(160%);
+          -webkit-backdrop-filter: blur(24px) saturate(160%);
+          border-top: 1px solid rgba(255,255,255,0.12);
+          border-left: 1px solid rgba(255,255,255,0.08);
+          border-right: 1px solid rgba(255,255,255,0.04);
+          border-bottom: 1px solid rgba(255,255,255,0.03);
+          border-radius: 16px;
+          padding: 18px 20px;
         }
-        .ins-history-item {
-          background: rgba(8, 12, 24, 0.5);
-          border: 1px solid rgba(255,255,255,0.07);
-          border-radius: 14px;
-          padding: 16px 18px;
-        }
-        .ins-history-date {
+        .cal-load-title {
           font-size: 11px; font-weight: 600;
-          color: rgba(255,255,255,0.3);
-          text-transform: uppercase; letter-spacing: 0.06em;
-          margin-bottom: 8px;
+          color: rgba(255,255,255,0.38);
+          text-transform: uppercase; letter-spacing: 0.08em;
+          margin-bottom: 14px;
         }
-        .ins-history-text {
-          font-size: 14px; line-height: 1.7;
-          color: rgba(255,255,255,0.55);
+        .cal-load-bars {
+          display: flex;
+          align-items: flex-end;
+          justify-content: space-between;
+          gap: 8px;
+          height: 110px;
+        }
+        .cal-load-col {
+          display: flex; flex-direction: column; align-items: center;
+          gap: 6px; flex: 1; height: 100%;
+        }
+        .cal-load-track {
+          flex: 1; width: 100%;
+          display: flex; align-items: flex-end;
+          background: rgba(255,255,255,0.04);
+          border-radius: 4px;
+          overflow: hidden;
+        }
+        .cal-load-fill {
+          width: 100%;
+          border-radius: 4px 4px 0 0;
+          transition: transform 0.15s ease;
+        }
+        .cal-load-col:hover .cal-load-fill { transform: scaleX(1.15); }
+        .cal-load-0 { background: rgba(255,255,255,0.06); }
+        .cal-load-1 { background: rgba(90,200,250,0.35); }
+        .cal-load-2 { background: rgba(90,200,250,0.55); }
+        .cal-load-3 { background: rgba(255,159,10,0.65); }
+        .cal-load-4 { background: rgba(255,69,58,0.75); box-shadow: 0 0 4px rgba(255,69,58,0.4); }
+        .cal-load-day {
+          font-size: 10px; font-weight: 600;
+          color: rgba(255,255,255,0.35);
+          text-transform: uppercase; letter-spacing: 0.04em;
         }
 
+        @media (max-width: 900px) {
+          .cal-layout { grid-template-columns: 1fr; }
+        }
         @media (prefers-reduced-motion: reduce) {
           .dash-bg-text { animation: none !important; }
         }
